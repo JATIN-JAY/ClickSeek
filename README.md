@@ -199,7 +199,7 @@ The **Find my facecam** chip (or "find it automatically when I press Make clips"
 
 ## Support
 
-NeonClipping is free. If it saves you time you can ⭐ star the repo, follow [@iamajmeena](https://www.instagram.com/iamajmeena/), or optionally donate via Razorpay (UPI / cards): <https://rzp.io/rzp/JN41CpW>. The app also has a ♥ Donate button. Nothing is ever locked behind a donation.
+NeonClipping is free. If it saves you time, you can ⭐ star the repository or follow [@iamajmeena](https://www.instagram.com/iamajmeena/).
 
 ## Credits and inspiration
 

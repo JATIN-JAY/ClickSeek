@@ -140,12 +140,11 @@ def g_static():
     R.check(g, 'app.js syntax (node --check)', lambda: (subprocess.run(['node', '--check', str(ROOT / 'app.js')], capture_output=True).returncode == 0, ''))
     for p in ('/assets/app.js', '/assets/style.css'):
         R.check(g, 'GET ' + p, lambda p=p: (api(p, raw=True)[0] == 200, ''))
-    for p in ('/library', '/donate', '/feedback/summary', '/live-active', '/creators', '/layouts'):
+    for p in ('/library', '/feedback/summary', '/live-active', '/creators', '/layouts'):
         R.check(g, 'GET ' + p, lambda p=p: (api(p)[0] == 200, ''))
+    R.check(g, '/donate is removed', lambda: (api('/donate')[0] == 404, ''))
     R.check(g, '/layouts returns 11 layouts with geometry', lambda: (lambda r: (len(r) == 11 and all('layers' in x or 'cam' in x or 'id' in x for x in r), len(r)))(api('/layouts')[1]))
     R.check(g, '/layouts rejects bad speaker size', lambda: (api('/layouts?top=9')[0] == 400, ''))
-    d = api('/donate')[1]
-    R.check(g, 'donate links are https only', lambda: (all(str(v).startswith('https://') for v in (d.values() if isinstance(d, dict) else []) if v), d))
     # validation / error messages
     R.check(g, '/make without link or id -> 4xx', lambda: (api('/make', {})[0] in (400, 422), ''))
     R.check(g, '/make with bad count -> 400', lambda: (api('/make', {'url': 'https://youtu.be/x', 'count': 'x'})[0] == 400, ''))

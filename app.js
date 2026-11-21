@@ -165,10 +165,6 @@ $('apply-video').onclick=()=>applySavedEdit('video').catch(e=>status(e.message))
 
 $('edit-top').addEventListener('input',()=>{$('top').value=$('edit-top').value;loadNativeLayouts().catch(e=>status(e.message));});
 
-// Optional donate button: only shown when donate.json (or env vars) has https links.
-(async()=>{try{const d=await request('/donate');if(!d.razorpay&&!d.paypal)return;if(d.razorpay){$('don-rzp').href=d.razorpay;$('don-rzp').hidden=false;}if(d.paypal){$('don-pp').href=d.paypal;$('don-pp').hidden=false;}
- $('donate').hidden=false;$('donate').onclick=()=>$('donate-dialog').showModal();$('don-close').onclick=()=>$('donate-dialog').close();}catch(e){}})();
-
 // ---- Live clipping (record + chat spikes + backdated clips)
 let liveId=null,liveTimer=null;const liveShown=new Set();
 function liveStars(d,file){const stars=document.createElement('div');stars.className='stars';const fb=document.createElement('small');fb.className='fb';fb.textContent='Rate this clip ↑';

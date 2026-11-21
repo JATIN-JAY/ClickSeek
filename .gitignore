@@ -20,7 +20,6 @@ highlights_v1.py
 __pycache__/
 !docs/*.txt
 !live/
-!donate.json
 !live/*
 
 !tests/

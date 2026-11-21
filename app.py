@@ -492,18 +492,6 @@ def live_stop(lid:str):
  if lid not in LIVE:raise HTTPException(404,'Live session not found.')
  LIVE[lid].stop();return {'ok':True}
 
-@app.get('/donate')
-def donate():
- """Optional donate links (donate.json or NEONCLIPPING_DONATE_RAZORPAY / NEONCLIPPING_DONATE_PAYPAL). Only https links are served; nothing is unlocked by donating."""
- cfg={}
- try:cfg=json.loads((ROOT/'donate.json').read_text(encoding='utf-8'))
- except (OSError,ValueError):pass
- out={}
- for k in ('razorpay','paypal'):
-  v=str(os.environ.get('NEONCLIPPING_DONATE_'+k.upper()) or cfg.get(k) or '').strip()
-  if v.startswith('https://') and len(v)<300 and ' ' not in v:out[k]=v
- return out
-
 @app.post('/feedback')
 def feedback(b:dict):
  """A star rating (1-5) for a finished clip. Stored locally; the scoring weights are refitted from the ratings (learn.py)."""
