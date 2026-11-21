@@ -7,6 +7,8 @@ ROMAN_PROMPT='Aaj hum GTA 6 ke baare mein baat karenge, yeh bahut mast hai. Kya 
 DEVA_PROMPT='यह हिंदी और अंग्रेज़ी में गेमिंग वीडियो है। GTA, गेमप्ले, क्लिपिंग, वीडियो, टूल।'
 
 def large_v3():
+    configured=os.environ.get('FACECAM_ASR_MODEL')
+    if configured and (Path(configured)/'model.bin').exists():return configured
     snaps=list((Path.home()/'.cache/huggingface/hub/models--Systran--faster-whisper-large-v3/snapshots').glob('*'))
     return str(snaps[0]) if snaps else 'large-v3'
 

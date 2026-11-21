@@ -1,6 +1,7 @@
 from pathlib import Path
 import json, subprocess, uuid, threading, shutil
 import sys
+import unicodedata
 import time
 import os
 import yt_dlp
@@ -20,6 +21,10 @@ ROOT=Path(__file__).resolve().parent
 DATA=Path(os.environ.get('NEONCLIPPING_DATA_DIR',str(ROOT/'data'))).resolve();DATA.mkdir(parents=True,exist_ok=True)
 app=FastAPI()
 state={}
+def named_file_id(title):
+ readable=unicodedata.normalize('NFKD',str(title)).encode('ascii','ignore').decode('ascii')
+ stem=''.join(ch for ch in readable if ch.isalnum())[:42] or 'Clip'
+ return stem+uuid.uuid4().hex[:10]
 def probe(p):
  r=subprocess.run(['ffprobe','-v','error','-show_streams','-show_format','-of','json',str(p)],capture_output=True,text=True,check=True)
  j=json.loads(r.stdout);v=next(x for x in j['streams'] if x['codec_type']=='video')
@@ -58,7 +63,7 @@ def text_file(id:str,kind:str):
  if not id.isalnum() or kind not in ('srt','ass','vtt'):raise HTTPException(404)
  p=DATA/(id+'.'+kind)
  if not p.exists():raise HTTPException(404)
- return FileResponse(p,filename='neonclipping-'+id+'.'+kind)
+ return FileResponse(p,filename='clipseek-'+id+'.'+kind)
 @app.get('/library')
 def library():
  records=[]
@@ -68,7 +73,7 @@ def library():
   try:
    j=json.loads(f.read_text());result=j.get('result',{})
    if result.get('status')=='done' and not j.get('superseded_by') and (DATA/(f.stem+'.mp4')).exists():
-    records.append({'id':f.stem,'title':j.get('settings',{}).get('title') or 'NeonClipping clip','created':f.stat().st_mtime,'meta':result.get('meta',{}),'settings':j.get('settings',{}),'srt':bool(result.get('srt')) and (DATA/(f.stem+'.srt')).exists(),**app.reedit_metadata(f.stem,j,groups)})
+    records.append({'id':f.stem,'title':j.get('settings',{}).get('title') or 'Clipseek clip','created':f.stat().st_mtime,'meta':result.get('meta',{}),'settings':j.get('settings',{}),'srt':bool(result.get('srt')) and (DATA/(f.stem+'.srt')).exists(),**app.reedit_metadata(f.stem,j,groups)})
   except (ValueError,OSError):pass
  return sorted(records,key=lambda j:j['created'],reverse=True)
 
@@ -126,7 +131,9 @@ def export(b:dict):
  except (ValueError,TypeError,OverflowError) as e:raise HTTPException(400,str(e))
  try:plan=styling.plan(b,DATA)
  except ValueError as e:raise HTTPException(400,str(e))
- job=uuid.uuid4().hex;out=DATA/(job+'.mp4');state[job]={'status':'running','message':'Preparing export'}
+ title=str(b.get('title') or f'Clip {start:.1f}s to {end:.1f}s')
+ b={**b,'title':title}
+ job=named_file_id(title);out=DATA/(job+'.mp4');state[job]={'status':'running','message':'Preparing export'}
  def work():
   try:
    words=[]
@@ -222,7 +229,7 @@ def make(b:dict):
  try:focus_brief,include_phrases,exclude_phrases=curation.focus_settings(b)
  except ValueError as error:raise HTTPException(400,str(error))
  acc='best' if b.get('accurate')=='best' else 'fast'     # the turbo/"accurate" local model was removed: its captions were worse than YouTube's. Only Best Hindi (large-v3) uses a local model on purpose.
- layout=b.get('layout','blur');style=b.get('caption_style','gta');language=b.get('language') or None
+ layout=b.get('layout','blur');style=b.get('caption_style','gta');language=b.get('language') or None;captions_enabled=b.get('captions',True) is not False
  from translit import to_hinglish
  top_h=b.get('top');cam=b.get('cam') or {'x':0,'y':0,'w':.25,'h':.3};game=b.get('game') or {'x':.25,'y':0,'w':.75,'h':1}
  job=uuid.uuid4().hex;save(job,{'id':job,'status':'running','stage':'Starting','progress':0,'clips':[],'source':{'url':url}})
@@ -355,16 +362,16 @@ def make(b:dict):
       if fc.get('found'):cam_use,game_use=fc['cam'],fc['game']
      except Exception as e:save(job,{'facecam':{'found':False,'reason':'detection failed: '+str(e)[:80]}})
     lang=language or ('hinglish' if (video_lang.startswith('hi') or c.get('language')=='hi') else None)
-    body={'id':sid2,'start':start,'end':end,'layout':layout,'top':(top_h if isinstance(top_h,(int,float)) and .2<=top_h<=.5 else .32),'captions':True,'caption_style':style,'language':language,'hook':(' '.join(to_hinglish(w) for w in c.get('hook','').split()) if lang=='hinglish' else c.get('hook','')),
+    body={'id':sid2,'start':start,'end':end,'layout':layout,'top':(top_h if isinstance(top_h,(int,float)) and .2<=top_h<=.5 else .32),'captions':captions_enabled,'caption_style':style,'language':language,'hook':(' '.join(to_hinglish(w) for w in c.get('hook','').split()) if lang=='hinglish' else c.get('hook','')),
           'aspect':b.get('aspect','vertical'),'resolution':b.get('resolution',1080),'fps':b.get('fps',0),'title':c.get('title',''),'post_caption':c.get('title',''),'batch_id':job,'source_url':url,'cam':cam_use,'game':game_use,'features':c.get('features'),'weights_used':W,'moment_profile':profile,'focus_brief':focus_brief,'focus_match':c.get('focus_match'),'visual_review':c.get('visual_review')}
     for k in styling.KEYS+brands.KEYS+hooks.KEYS:
      if b.get(k) not in (None,''):body[k]=b[k]
     if b.get('credit_auto') and uploader and not body.get('credit'):body['credit']='Clip: '+uploader[:40]
-    if acc!='fast' or not c.get('words'):
+    if captions_enabled and (acc!='fast' or not c.get('words')):
      # local speech model: only when you ask for Accurate / Best, or the video has no YouTube captions (local files, Twitch)
      save(job,{'stage':f'Accurate captions {i+1}/{len(found)}'})
      body['words']=transcribe(DATA/(sid2+'.mp4'),start,end,DATA,lambda m:None,lang,(large_v3() if acc=='best' else None))['words']
-    else:
+    elif captions_enabled:
      ws=c['words']       # YouTube's own captions: better than a local model on game audio, and no waiting
      if lang=='hinglish':
       ws=collapse_repeats([dict(w,text=ascii_fold(to_hinglish(w['text'])).strip()) for w in ws if str(w.get('text','')).strip()])

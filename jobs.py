@@ -5,6 +5,7 @@ import threading
 import time
 import uuid
 from pathlib import Path
+from contextlib import contextmanager
 from fastapi import HTTPException
 
 class JobQueue:
@@ -18,8 +19,13 @@ class JobQueue:
         if autostart:
             self.worker=threading.Thread(target=self.run,daemon=True);self.worker.start()
 
+    @contextmanager
     def connect(self):
-        db=sqlite3.connect(self.path,timeout=10);db.row_factory=sqlite3.Row;return db
+        db=sqlite3.connect(self.path,timeout=10);db.row_factory=sqlite3.Row
+        try:
+            yield db
+        finally:
+            db.close()
 
     def rows(self):
         with self.connect() as db:rows=db.execute('SELECT * FROM jobs ORDER BY created DESC').fetchall()

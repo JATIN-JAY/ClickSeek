@@ -151,14 +151,15 @@ def attach(app, data, root):
 
     @app.get('/manifest.webmanifest')
     def manifest():
-        return JSONResponse({'name': 'NeonClipping', 'short_name': 'NeonClip', 'start_url': '/m', 'scope': '/', 'display': 'standalone',
-                             'background_color': '#0b0912', 'theme_color': '#0b0912',
+        return JSONResponse({'name': 'Clipseek', 'short_name': 'Clipseek', 'start_url': '/m', 'scope': '/', 'display': 'standalone',
+                             'background_color': '#050805', 'theme_color': '#050805',
                              'icons': [{'src': '/phone-icon.svg', 'sizes': 'any', 'type': 'image/svg+xml', 'purpose': 'any'}]},
                             media_type='application/manifest+json')
 
     @app.get('/phone-icon.svg')
     def icon():
-        svg = ("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='#0b0912'/>"
-               "<text x='8' y='46' font-family='Impact,Arial Black' font-size='38' fill='#ff4ba5'>N</text>"
-               "<path d='M34 40 L52 22 M40 22 H52 V34' stroke='#58e8f7' stroke-width='5' fill='none' stroke-linecap='round'/></svg>")
+        svg = ("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>"
+               "<rect width='64' height='64' rx='16' fill='#050805' stroke='#263826' stroke-width='2'/>"
+               "<path d='M44 17a19 19 0 1 0 0 30' fill='none' stroke='#39ff14' stroke-width='6' stroke-linecap='round'/>"
+               "<path d='M29 23v18l15-9z' fill='#b5ff9c'/></svg>")
         return Response(svg, media_type='image/svg+xml')

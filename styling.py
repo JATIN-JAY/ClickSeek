@@ -14,9 +14,10 @@ import re
 import subprocess
 import textwrap
 from pathlib import Path
+from PIL import Image
 
 KEYS = ('template', 'tpl_name', 'tpl_handle', 'bg_mode', 'bg_color', 'bg_color2', 'bg_image', 'bg_dim', 'bg_blur', 'padding', 'radius',
-        'watermark_image', 'watermark_pos', 'watermark_size', 'watermark_opacity', 'credit', 'outro_text', 'outro_seconds',
+        'watermark_image', 'watermark_pos', 'watermark_size', 'watermark_opacity', 'watermark_x', 'watermark_y', 'credit', 'outro_text', 'outro_seconds',
         'music', 'music_volume', 'music_peak', 'music_riser', 'caption_anim')
 TEMPLATES = ('none', 'x_light', 'x_dark', 'tiktok_hook', 'breaking_news')
 BG_MODES = ('blur', 'color', 'gradient', 'image')
@@ -154,11 +155,20 @@ class Plan:
         if self.watermark:
             idx = self.add_input(['-loop', '1', '-framerate', f'{fps:.3f}', '-i', str(self.watermark)])
             w = max(16, int(width * self.watermark_size / 100) // 2 * 2)
+            try:
+                with Image.open(self.watermark) as watermark_image:
+                    watermark_height = max(2, int(round(w * watermark_image.height / watermark_image.width)) // 2 * 2)
+            except (OSError, ZeroDivisionError):
+                watermark_height = w
             m = int(width * .055)
             top = int(height * .14)            # stays under the platform's top bar
             xs = {'l': m, 'r': f'W-w-{m}'}
             side = 'l' if self.watermark_pos in ('tl', 'bl') else 'r'
             y = top if self.watermark_pos in ('tl', 'tr') else f'H-h-{int(height * .22)}'
+            if self.watermark_x is not None:
+                xs[side] = str(max(0, min(width - w, round(width * self.watermark_x))))
+            if self.watermark_y is not None:
+                y = str(max(0, min(height - watermark_height, round(height * self.watermark_y))))
             g += (f';[{idx}:v]scale={w}:-2,format=rgba,colorchannelmixer=aa={self.watermark_opacity:.2f}[wm]'
                   f';[base][wm]overlay={xs[side]}:{y}:shortest=1[base2];[base2]null[base]')
         return g
@@ -359,6 +369,8 @@ def plan(body, data):
         bg_image=None, watermark=None, music=None,
         watermark_pos=str(body.get('watermark_pos') or 'tr'), watermark_size=number(body.get('watermark_size'), 16, 5, 40, 'Watermark size'),
         watermark_opacity=number(body.get('watermark_opacity'), 0.85, 0.1, 1, 'Watermark opacity'),
+        watermark_x=None if body.get('watermark_x') in (None, '') else number(body.get('watermark_x'), 0, 0, 1, 'Watermark horizontal position'),
+        watermark_y=None if body.get('watermark_y') in (None, '') else number(body.get('watermark_y'), 0, 0, 1, 'Watermark vertical position'),
         credit=text_field(body.get('credit'), 60, 'credit'),
         outro_text=text_field(body.get('outro_text'), 40, 'outro'), outro_seconds=number(body.get('outro_seconds'), 3, 1.5, 8, 'Outro length'),
         music_volume=number(body.get('music_volume'), 0.15, 0, 1, 'Music volume'), music_peak=number(body.get('music_peak'), 0.85, 0, 1, 'Peak volume'),
@@ -367,6 +379,8 @@ def plan(body, data):
     )
     if spec['watermark_pos'] not in WM_POS:
         raise ValueError('Watermark position must be tl, tr, bl or br.')
+    if (spec['watermark_x'] is None) != (spec['watermark_y'] is None):
+        raise ValueError('Watermark custom position requires both x and y.')
     for key, field, kind in (('bg_image', 'bg_image', 'image'), ('watermark', 'watermark_image', 'image'), ('music', 'music', 'audio')):
         if body.get(field):
             p = asset_path(data, body.get(field), kind)
@@ -397,6 +411,18 @@ def attach(app, data):
     """POST /upload-asset?kind=image|audio  (multipart "file"): stores a logo / wallpaper / music file for the style options."""
     import uuid
     from fastapi import File, HTTPException, UploadFile
+    from fastapi.responses import FileResponse
+
+    @app.get('/style-asset/{asset_id}')
+    def style_asset(asset_id: str):
+        if not asset_id.isalnum():
+            raise HTTPException(404, 'Asset not found.')
+        for extensions in ASSET_KINDS.values():
+            for extension in extensions:
+                path = asset_dir(data) / (asset_id + extension)
+                if path.is_file():
+                    return FileResponse(path)
+        raise HTTPException(404, 'Asset not found.')
 
     @app.post('/upload-asset')
     async def upload_asset(kind: str, file: UploadFile = File(...)):

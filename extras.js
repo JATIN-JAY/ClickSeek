@@ -1,13 +1,14 @@
-// NeonClipping extras: style panel, caption animation, SRT/ASS import, facecam finder, AI parts.
+// Clipseek extras: style panel, caption animation, SRT/ASS import, facecam finder, AI parts.
 // Loaded after app.js. It only adds to the page and wraps request()/exportSettings()/openSavedClip(); app.js stays as it is.
 (function () {
   const $ = id => document.getElementById(id);
   const STYLE_KEYS = ['template', 'tpl_name', 'tpl_handle', 'bg_mode', 'bg_color', 'bg_color2', 'bg_image', 'bg_dim', 'bg_blur', 'padding', 'radius',
-    'watermark_image', 'watermark_pos', 'watermark_size', 'watermark_opacity', 'credit', 'outro_text', 'outro_seconds',
+    'watermark_image', 'watermark_pos', 'watermark_size', 'watermark_opacity', 'watermark_x', 'watermark_y', 'credit', 'outro_text', 'outro_seconds',
     'music', 'music_volume', 'music_peak', 'music_riser', 'caption_anim',
     'caption_font','caption_size','caption_color','caption_active','caption_outline','caption_max_words','hook_duration','hook_background'];
   const BRAND_KEYS=['caption_font','caption_size','caption_color','caption_active','caption_outline','caption_max_words'];
   const assets = { bg_image: '', watermark_image: '', music: '' };
+  let watermarkPosition = null;
 
   // ---- reading / writing the style fields
   function raw() {
@@ -16,6 +17,7 @@
       bg_mode: $('st-bg-mode').value === 'none' ? '' : $('st-bg-mode').value, bg_color: $('st-bg-color').value, bg_color2: $('st-bg-color2').value,
       bg_image: assets.bg_image, bg_dim: Number($('st-bg-dim').value) / 100, padding: Number($('st-padding').value), radius: Number($('st-radius').value),
       watermark_image: assets.watermark_image, watermark_pos: $('st-wm-pos').value, watermark_size: Number($('st-wm-size').value),
+      watermark_x: watermarkPosition?.x ?? null, watermark_y: watermarkPosition?.y ?? null,
       watermark_opacity: Number($('st-wm-opacity').value) / 100, credit: $('st-credit').value.trim(), outro_text: $('st-outro').value.trim(),
       outro_seconds: Number($('st-outro-sec').value), music: assets.music, music_volume: Number($('st-music-vol').value) / 100,
       music_peak: Number($('st-music-peak').value) / 100, music_riser: Number($('st-music-riser').value),
@@ -23,13 +25,14 @@
     };
     return v;
   }
+  window.neonStylePreview = raw;
   // only what is switched on (Make / export), so plain exports stay exactly as before
   function styleFields() {
     const v = raw(), o = {};
     if (v.template !== 'none') { o.template = v.template; o.tpl_name = v.tpl_name; o.tpl_handle = v.tpl_handle; }
     if (v.bg_mode) { o.bg_mode = v.bg_mode; o.bg_color = v.bg_color; o.bg_color2 = v.bg_color2; o.bg_dim = v.bg_dim; if (v.bg_mode === 'image' && v.bg_image) o.bg_image = v.bg_image; }
     if (v.padding > 0) { o.padding = v.padding; o.radius = v.radius; } else if (v.radius > 0 && v.bg_mode) { o.radius = v.radius; }
-    if (v.watermark_image) { o.watermark_image = v.watermark_image; o.watermark_pos = v.watermark_pos; o.watermark_size = v.watermark_size; o.watermark_opacity = v.watermark_opacity; }
+    if (v.watermark_image) { o.watermark_image = v.watermark_image; o.watermark_pos = v.watermark_pos; o.watermark_size = v.watermark_size; o.watermark_opacity = v.watermark_opacity; if (watermarkPosition) { o.watermark_x = watermarkPosition.x; o.watermark_y = watermarkPosition.y; } }
     if (v.credit) o.credit = v.credit;
     if (v.outro_text) { o.outro_text = v.outro_text; o.outro_seconds = v.outro_seconds; }
     if (v.music) { o.music = v.music; o.music_volume = v.music_volume; o.music_peak = v.music_peak; o.music_riser = v.music_riser; }
@@ -52,8 +55,12 @@
     setRange('st-padding', 'st-padding-o', s.padding || 0); setRange('st-radius', 'st-radius-o', s.radius || 0);
     setRange('st-bg-dim', 'st-dim-o', Math.round((s.bg_dim === undefined ? .25 : s.bg_dim) * 100));
     assets.bg_image = s.bg_image || ''; assets.watermark_image = s.watermark_image || ''; assets.music = s.music || '';
+    watermarkPosition = typeof s.watermark_x === 'number' && typeof s.watermark_y === 'number' ? { x: s.watermark_x, y: s.watermark_y } : null;
     $('st-bg-name').textContent = assets.bg_image ? 'image set' : ''; $('st-wm-name').textContent = assets.watermark_image ? 'logo set' : 'no logo';
     $('st-music-name').textContent = assets.music ? 'music set' : 'no music';
+    $('st-wm-remove').disabled = !assets.watermark_image; $('st-music-remove').disabled = !assets.music;
+    $('watermark-help').hidden = !assets.watermark_image;
+    $('st-wm-file').value = ''; $('st-music-file').value = '';
     $('st-wm-pos').value = s.watermark_pos || 'tr'; setRange('st-wm-size', 'st-wm-size-o', s.watermark_size || 16);
     setRange('st-wm-opacity', 'st-wm-op-o', Math.round((s.watermark_opacity === undefined ? .85 : s.watermark_opacity) * 100));
     $('st-credit').value = s.credit || ''; $('st-outro').value = s.outro_text || ''; $('st-outro-sec').value = s.outro_seconds || 3;
@@ -75,15 +82,25 @@
       const j = await r.json();
       if (!r.ok) throw Error(j.detail || 'Upload failed');
       assets[key] = j.id; nameEl.textContent = j.name || 'uploaded';
-    } catch (e) { assets[key] = ''; nameEl.textContent = '⚠ ' + e.message; }
+      const remove = $(key === 'watermark_image' ? 'st-wm-remove' : key === 'music' ? 'st-music-remove' : ''); if (remove) remove.disabled = false;
+      if (key === 'watermark_image') $('watermark-help').hidden = false;
+    } catch (e) { assets[key] = ''; nameEl.textContent = '⚠ ' + e.message;
+      const remove = $(key === 'watermark_image' ? 'st-wm-remove' : key === 'music' ? 'st-music-remove' : ''); if (remove) remove.disabled = true;
+    }
   }
   const hook = (id, fn) => { const el = $(id); if (el) el.addEventListener('change', fn); };
   hook('st-bg-file', e => { const f = e.target.files[0]; if (f) { uploadAsset(f, 'image', $('st-bg-name'), 'bg_image'); if ($('st-bg-mode').value === 'none') $('st-bg-mode').value = 'image'; } });
   hook('st-wm-file', e => { const f = e.target.files[0]; if (f) uploadAsset(f, 'image', $('st-wm-name'), 'watermark_image'); });
   hook('st-music-file', e => { const f = e.target.files[0]; if (f) uploadAsset(f, 'audio', $('st-music-name'), 'music'); });
+  $('st-wm-remove').onclick = () => { assets.watermark_image = ''; watermarkPosition = null; $('st-wm-name').textContent = 'no logo'; $('st-wm-file').value = ''; $('st-wm-remove').disabled = true; $('watermark-help').hidden = true; status('Watermark removed from the current style. Apply or export to update the clip.'); };
+  $('st-wm-pos').addEventListener('change', () => { watermarkPosition = null; });
+  window.neonSetWatermarkPosition = (x, y) => { watermarkPosition = { x, y }; };
+  window.neonSetWatermarkSize = value => { const size = Math.max(5, Math.min(40, Math.round(value))); $('st-wm-size').value = size; $('st-wm-size-o').textContent = size; };
+  window.neonSetWatermarkHelp = visible => { $('watermark-help').hidden = !visible; };
+  $('st-music-remove').onclick = () => { assets.music = ''; $('st-music-name').textContent = 'no music'; $('st-music-file').value = ''; $('st-music-remove').disabled = true; status('Music removed from the current style. Apply or export to update the clip.'); };
   [['st-padding', 'st-padding-o', 1], ['st-radius', 'st-radius-o', 1], ['st-bg-dim', 'st-dim-o', 1], ['st-wm-size', 'st-wm-size-o', 1], ['st-wm-opacity', 'st-wm-op-o', 1], ['st-music-vol', 'st-mv-o', 1], ['st-music-peak', 'st-mp-o', 1]]
     .forEach(([i, o]) => { const el = $(i); if (el) el.addEventListener('input', () => { $(o).textContent = el.value; }); });
-  if ($('st-reset')) $('st-reset').onclick = () => loadStyleFields({});
+  if ($('st-reset')) $('st-reset').onclick = () => { loadStyleFields({}); status('Style options reset.'); };
 
   // ---- caption animation + SRT/ASS import (added to the "Give it a voice" panel next to the language picker)
   if($('mode')){const panel=document.createElement('details');panel.className='caption-brand';panel.innerHTML='<summary>Focus the clips on a topic or campaign</summary><p class="muted">These rules use spoken words, not objects visible only on screen. A topic guides ranking. Required and excluded phrases are hard transcript filters; fewer clips may match.</p><label>Transcript focus<textarea id="focus-brief" rows="2" maxlength="800" placeholder="Funny misunderstandings, complete stories, useful editing tips…"></textarea></label><label>Must mention at least one phrase<input id="focus-include" placeholder="brand name, product name (comma-separated)"></label><label>Exclude passages mentioning<input id="focus-exclude" placeholder="sponsor, subscribe (comma-separated)"></label>';$('mode').closest('label').parentNode.append(panel);}
@@ -228,7 +245,7 @@
       try {
         const p = await baseRequest('/phone/status');
         if (!p.enabled) {
-          phoneBox.innerHTML = '📱 <b>Phone access is off.</b> To control live clipping and watch clips on your phone, close NeonClipping and start it with the <b>NeonClipping (phone access)</b> shortcut. Windows may ask once to allow it on private networks: choose Allow.';
+          phoneBox.innerHTML = '📱 <b>Phone access is off.</b> To control live clipping and watch clips on your phone, close Clipseek and start it with the <b>Clipseek (phone access)</b> shortcut. Windows may ask once to allow it on private networks: choose Allow.';
         } else {
           const urls = p.urls.length ? p.urls.map(u => '<b>' + u + '</b>').join(' or ') : '(no Wi-Fi address found)';
           phoneBox.innerHTML = '📱 <b>Phone access is on.</b> On a phone connected to the same Wi-Fi open ' + urls + ' and enter the PIN <b style="color:var(--lime);font-size:18px;letter-spacing:.1em">' + p.pin + '</b> <button class="secondary" id="phone-newpin" style="margin-left:8px;padding:4px 10px">New PIN</button>' +
